@@ -6,7 +6,28 @@ import re
 import json
 import threading
 import uuid
-import pika
+import socket
+
+try:
+    import pika
+
+    if (
+        pika.__version__ != "0.12.0"
+        and pika.__version__ != "0.13.0"
+        and pika.__version__ != "0.13.1"
+    ):
+        raise Exception("invalid pika version")
+except ModuleNotFoundError:
+    print(
+        "This python script requires pika and has been known to work with versions 0.12.0 and 0.13.1"
+    )
+    print("Install it by running:")
+    print("\tpython3 -m pip install --user pika==0.12.0")
+    exit(1)
+except Exception as ex:
+    print("Unexpected Error: %s" % ex.args)
+    exit(1)
+
 
 class Sender:
     connection = None
@@ -20,12 +41,11 @@ class Sender:
 
     def initialize(self, cb):
         self.cb = cb
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters(
-            'norminette.42.fr',
-            5672,
-            '/',
-            pika.PlainCredentials('guest', 'guest')
-            ))
+        self.connection = pika.BlockingConnection(
+            pika.ConnectionParameters(
+                "norminette.42.fr", 5672, "/", pika.PlainCredentials("guest", "guest")
+            )
+        )
         self.channel = self.connection.channel()
         self.exchange = self.channel.exchange_declare(exchange=self.routing_key)
         self.reply_queue = self.channel.queue_declare(exclusive=True).method.queue
@@ -41,19 +61,20 @@ class Sender:
 
     def publish(self, content):
         self.counter += 1
-        self.channel.basic_publish(exchange='',
+        self.channel.basic_publish(
+            exchange="",
             routing_key=self.routing_key,
             body=content,
             properties=pika.BasicProperties(
-                reply_to = self.reply_queue,
-                correlation_id = self.corr_id
-            ))
+                reply_to=self.reply_queue, correlation_id=self.corr_id
+            ),
+        )
 
     def consume(self, channel, method_frame, properties, body):
         self.counter -= 1
         self.cb(body.decode("utf-8"))
 
-    def sync_if_needed(self, max = os.cpu_count()):
+    def sync_if_needed(self, max=os.cpu_count()):
         if self.counter >= max:
             self.connection.process_data_events()
 
@@ -71,22 +92,21 @@ class Norminette:
         self.files = []
         self.lock = threading.Lock()
         self.sender = Sender()
-        self.sender.initialize(lambda payload: \
-            self.manage_result(json.loads(payload)))
+        self.sender.initialize(lambda payload: self.manage_result(json.loads(payload)))
 
     def desinitialize(self):
-        print('\r\x1b', end='')
+        print("\r\x1b", end="")
         self.sender.desinitialize()
 
     def check(self, options):
         if options.version:
             self.version()
         else:
-            options.rules = ''
+            options.rules = ""
             if len(options.files_or_directories) is not 0:
                 self.populate_recursive(options.files_or_directories)
             else:
-                self.populate_recursive([ os.getcwd() ])
+                self.populate_recursive([os.getcwd()])
             self.send_files(options)
 
         self.sender.sync()
@@ -106,29 +126,29 @@ class Norminette:
         entries = os.listdir(dir)
         final = []
         for e in entries:
-            if e[0] is not '.':
+            if e[0] is not ".":
                 final.append(os.path.join(dir, e))
         return final
 
     def version(self):
-        print("Local version:\n0.1 unofficial")
-        print("Norminette version:")
-        self.send_content(json.dumps({'action': "version"}))
+        print("Local version:\n0.1.1 unofficial")
+        print("Norminette help:")
+        self.send_content(json.dumps({"action":"help"}))
 
-    def file_description(self, file, opts = {}):
-        with open(file, 'r') as f:
-            return json.dumps({ 'filename': file, 'content': f.read(), 'opts': opts })
+    def file_description(self, file, opts={}):
+        with open(file, "r") as f:
+            return json.dumps({"filename": file, "content": f.read(), "opts": opts})
 
     def is_a_valid_file(self, f):
-        return f is not None and os.path.isfile(f) \
+        return (
+            f is not None
+            and os.path.isfile(f)
             and re.match(".*\\.[ch]$", f) is not None
+        )
 
     def populate_file(self, f):
         if not self.is_a_valid_file(f):
-            self.manage_result({
-                'filename': f,
-                'display': "Warning: Not a valid file"
-                })
+            self.manage_result({"filename": f, "display": "Warning: Not a valid file"})
             return
 
         self.files.append(f)
@@ -145,38 +165,46 @@ class Norminette:
         self.sender.publish(content)
 
     def cleanify_path(self, filename):
-        return filename.replace(os.getcwd() + '/', '', 1)
+        return filename.replace(os.getcwd() + "/", "", 1)
 
     def manage_result(self, result):
         self.lock.acquire()
-        if 'filename' in result:
-            print("\r\x1b[K\x1b[;1mNorme: " + self.cleanify_path(result['filename'] + '\x1b[m'), end='')
-        if 'display' in result and result['display'] is not None:
+        if "filename" in result:
+            print(
+                "\r\x1b[K\x1b[;1mNorme: "
+                + self.cleanify_path(result["filename"] + "\x1b[m"),
+                end="",
+            )
+        if "display" in result and result["display"] is not None:
             print()
-            print(result['display'])
+            print(result["display"])
         self.lock.release()
-        if 'stop' in result and result['stop'] is True:
+        if "stop" in result and result["stop"] is True:
             print()
             exit(0)
+
 
 class Parser:
     def parse(self):
         parser = argparse.ArgumentParser(
-            usage="Usage: %(prog)s [options] [files_or_directories]",
-            allow_abbrev=False
-            )
+            usage="Usage: %(prog)s [options] [files_or_directories]", allow_abbrev=False
+        )
         parser.add_argument(
-            '--version', '-v',
-            help='Print version',
-            action="store_true"
-            )
-        parser.add_argument('files_or_directories', nargs=argparse.REMAINDER)
+            "--version", "-v", help="Print version", action="store_true"
+        )
+        parser.add_argument("files_or_directories", nargs=argparse.REMAINDER)
 
         args = parser.parse_args()
         return args
 
 
-n = Norminette()
-n.initialize()
-n.check(Parser().parse())
-n.desinitialize()
+if __name__ == "__main__":
+    try:
+        addr = socket.gethostbyname("norminette.42.fr")
+        n = Norminette()
+        n.initialize()
+        n.check(Parser().parse())
+        n.desinitialize()
+    except socket.gaierror:
+        print("This script must be run while connected to the 42 Network")
+        exit(1)
