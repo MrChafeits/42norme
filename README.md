@@ -20,19 +20,19 @@ python3 norminette.py
 
 For a convient alias insert this into your shell's respective `.rc` file:
 
-`alias pynorm="python3 /path/to/norminette.py"`
+`alias pynorme="/path/to/norminette.py"`
 
-Run `python3 norminette.py --help` to view all supported rules and usage
+Run `/path/to/norminette.py --help` to view all supported rules and usage
 
 ### **Notes**
 
 + This script requires an active connection to the local 42 campus Wi-Fi, which is tested by performing a dns lookup on the local `vogsphere` domain
 
 + Some rules appear to be non-functional or poorly named, such as:
-* `CheckVla` which doesn't seem catch any instance of a variable length array
-* `CheckParentSpacing` which checks for spacing around parentheses
-* `CheckDeclarationCount` which doesn't seem to check the number of function declarations or variable declarations
-* `CheckDefine` which incorrectly interprets `#define ZERO (0)` as an invalid constant and does not understand C preprocessor string concatenation
+  * **`CheckVla`** which doesn't seem catch any instance of a variable length array
+  * **`CheckParentSpacing`** which checks for spacing around parentheses
+  * **`CheckDeclarationCount`** which doesn't seem to check the number of function declarations or variable declarations
+  * **`CheckDefine`** which incorrectly interprets `#define ZERO (0)` as an invalid constant and does not understand C preprocessor string concatenation
 
 ### **Credits**
 
