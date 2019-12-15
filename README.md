@@ -1,6 +1,6 @@
 # **42norme**
 
-42 (Paris)
+42 (SiliconValley)
 
 ### **Description**
 
@@ -15,25 +15,24 @@
 Just run:
 
 ```bash
-python norminette.py
+python3 norminette.py
 ```
 
-For a better configuration export the PATH of this folder inside
-your `.zshrc` and set an alias like this:
+For a convient alias insert this into your shell's respective `.rc` file:
 
-`alias norm="python $NORM/norminette.py"`
+`alias pynorm="python3 /path/to/norminette.py"`
 
-To see the help add the flags `--help`.
+Run `python3 norminette.py --help` to view all supported rules and usage
 
 ### **Notes**
 
-+ It's possible to use it just connecting to **42** wifi.
++ This script requires an active connection to the local 42 campus Wi-Fi, which is tested by performing a dns lookup on the local `vogsphere` domain
 
-+ It's necessary to properly set the [kerberos](https://github.com/gcamerli/42krb) access to execute it (**42norme** directly connects to the official `norminette.42.fr` to receive the results).
-
-+ It's not possible to use the flag:
-
-`CheckForbiddenSourceHeader`
++ Some rules appear to be non-functional or poorly named, such as:
+* `CheckVla` which doesn't seem catch any instance of a variable length array
+* `CheckParentSpacing` which checks for spacing around parentheses
+* `CheckDeclarationCount` which doesn't seem to check the number of function declarations or variable declarations
+* `CheckDefine` which incorrectly interprets `#define ZERO (0)` as an invalid constant and does not understand C preprocessor string concatenation
 
 ### **Credits**
 
