@@ -25,7 +25,7 @@ except ModuleNotFoundError:
     print("\tpython3 -m pip install --user pika==0.12.0")
     exit(1)
 except Exception as ex:
-    print("Unexpected Error: %s" % ex.args)
+    print(f"Unexpected Error: {ex}")
     exit(1)
 
 
@@ -39,7 +39,7 @@ class Sender:
     counter = 0
     corr_id = str(uuid.uuid4())
 
-    def initialize(self, cb):
+    def setup(self, cb):
         self.cb = cb
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(
@@ -53,7 +53,7 @@ class Sender:
         self.channel.basic_consume(self.consume, queue=self.reply_queue, no_ack=True)
         self.counter = 0
 
-    def desinitialize(self):
+    def teardown(self):
         if self.channel is not None:
             self.channel.close()
         if self.connection is not None:
@@ -88,21 +88,20 @@ class Norminette:
     sender = None
     lock = None
 
-    def initialize(self):
+    def setup(self):
         self.files = []
         self.lock = threading.Lock()
         self.sender = Sender()
-        self.sender.initialize(lambda payload: self.manage_result(json.loads(payload)))
+        self.sender.setup(lambda payload: self.manage_result(json.loads(payload)))
 
-    def desinitialize(self):
+    def teardown(self):
         print("\r\x1b", end="")
-        self.sender.desinitialize()
+        self.sender.teardown()
 
     def check(self, options):
         if options.version:
             self.version()
         else:
-            options.rules = ""
             if len(options.files_or_directories) is not 0:
                 self.populate_recursive(options.files_or_directories)
             else:
@@ -116,7 +115,6 @@ class Norminette:
         for o in objects:
             if not os.path.isabs(o):
                 o = os.path.abspath(o)
-
             if os.path.isdir(o):
                 self.populate_recursive(self.list_dir(o))
             else:
@@ -131,13 +129,13 @@ class Norminette:
         return final
 
     def version(self):
-        print("Local version:\n0.1.1 unofficial")
+        print("Local version:\n0.1.2 unofficial")
         print("Norminette help:")
         self.send_content(json.dumps({"action":"help"}))
 
-    def file_description(self, file, opts={}):
+    def file_description(self, file, rules=[]):
         with open(file, "r") as f:
-            return json.dumps({"filename": file, "content": f.read(), "opts": opts})
+            return json.dumps({"filename": file, "content": f.read(), "rules": rules})
 
     def is_a_valid_file(self, f):
         return (
@@ -150,16 +148,15 @@ class Norminette:
         if not self.is_a_valid_file(f):
             self.manage_result({"filename": f, "display": "Warning: Not a valid file"})
             return
-
         self.files.append(f)
 
     def send_files(self, options):
         for f in self.files:
-            self.send_file(f, options.rules)
+            self.send_file(f, options.rules.split(","))
             self.sender.sync_if_needed
 
     def send_file(self, f, rules):
-        self.send_content(self.file_description(f, {rules: rules}))
+        self.send_content(self.file_description(f, rules))
 
     def send_content(self, content):
         self.sender.publish(content)
@@ -176,11 +173,13 @@ class Norminette:
                 end="",
             )
         if "display" in result and result["display"] is not None:
-            print()
-            print(result["display"])
+            res = result["display"]
+            if "Unvalid" not in res:
+                print()
+            print(res)
         self.lock.release()
         if "stop" in result and result["stop"] is True:
-            print()
+            # print()
             exit(0)
 
 
@@ -192,6 +191,7 @@ class Parser:
         parser.add_argument(
             "--version", "-v", help="Print version", action="store_true"
         )
+        parser.add_argument("--rules", "-R", help="Rules to disable", type=str)
         parser.add_argument("files_or_directories", nargs=argparse.REMAINDER)
 
         args = parser.parse_args()
@@ -200,11 +200,14 @@ class Parser:
 
 if __name__ == "__main__":
     try:
-        addr = socket.gethostbyname("norminette.42.fr")
+        addr = socket.gethostbyname("vogsphere")
         n = Norminette()
-        n.initialize()
+        n.setup()
         n.check(Parser().parse())
-        n.desinitialize()
+        n.teardown()
     except socket.gaierror:
         print("This script must be run while connected to the 42 Network")
         exit(1)
+    except Exception as ex:
+        print(f"Unexpected exception: {ex}")
+        exit(2)
