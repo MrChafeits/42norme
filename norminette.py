@@ -94,8 +94,10 @@ class Norminette:
     files = None
     sender = None
     lock = None
+    options = None
 
-    def setup(self):
+    def setup(self, options):
+        self.options = options
         self.files = []
         self.lock = threading.Lock()
         self.sender = Sender()
@@ -105,16 +107,16 @@ class Norminette:
         print("\r\x1b", end="")
         self.sender.teardown()
 
-    def check(self, options):
-        if options.version:
+    def check(self):
+        if self.options.version:
             self.version()
         else:
-            # print(options)
-            if len(options.files_or_directories) is not 0:
-                self.populate_recursive(options.files_or_directories)
+            # print(self.options)
+            if len(self.options.files_or_directories) is not 0:
+                self.populate_recursive(self.options.files_or_directories)
             else:
                 self.populate_recursive([os.getcwd()])
-            self.send_files(options)
+            self.send_files(self.options)
 
         self.sender.sync()
         print()
@@ -175,7 +177,7 @@ class Norminette:
     def cleanify_path(self, filename):
         return filename.replace(os.getcwd() + "/", "", 1)
 
-    def manage_result(self, result, options):
+    def manage_result(self, result):
         self.lock.acquire()
         if "filename" in result:
             print(
@@ -187,7 +189,10 @@ class Norminette:
             res = result["display"]
             if "Unvalid" not in res:
                 print()
-            print(res)
+            if self.options.version is True:
+                self.print_version()
+            else:
+                print(res)
         self.lock.release()
         if "stop" in result and result["stop"] is True:
             # print()
@@ -213,8 +218,8 @@ if __name__ == "__main__":
     try:
         addr = socket.gethostbyname("vogsphere")
         n = Norminette()
-        n.setup()
-        n.check(Parser().parse())
+        n.setup(Parser().parse())
+        n.check()
         n.teardown()
     except socket.gaierror:
         print("This script must be run while connected to a 42 LAN")
