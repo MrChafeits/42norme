@@ -189,10 +189,8 @@ class Norminette:
             res = result["display"]
             if "Unvalid" not in res:
                 print()
-            if self.options.version is True:
-                self.print_version()
-            else:
-                print(res)
+            # Pretty print rules perhaps?
+            print(res)
         self.lock.release()
         if "stop" in result and result["stop"] is True:
             # print()
