@@ -16,12 +16,19 @@ try:
         and pika.__version__ != "0.13.0"
         and pika.__version__ != "0.13.1"
     ):
-        raise Exception("invalid pika version")
-except ModuleNotFoundError:
+        print(f"Found: pika=={pika.__version__}")
+        print("If this version functions as expected, please send a pull request or\n"
+            "create an issue to add it to the list of known compatible versions.")
+except ModuleNotFoundError as ex:
+    print(f"{ex}")
     print(
-        "This python script requires pika and has been known to work with versions 0.12.0 and 0.13.1"
+            "This python script requires pika and is known to be compatible with the\n"
+            "following versions:\n"
+            "\tpika==0.12.0\n"
+            "\tpika==0.13.0\n"
+            "\tpika==0.13.1\n"
     )
-    print("Install it by running:")
+    print("\nInstall it by running:")
     print("\tpython3 -m pip install --user pika==0.12.0")
     exit(1)
 except Exception as ex:
@@ -102,6 +109,7 @@ class Norminette:
         if options.version:
             self.version()
         else:
+            # print(options)
             if len(options.files_or_directories) is not 0:
                 self.populate_recursive(options.files_or_directories)
             else:
@@ -121,19 +129,19 @@ class Norminette:
                 self.populate_file(o)
 
     def list_dir(self, dir):
-        entries = os.listdir(dir)
-        final = []
-        for e in entries:
-            if e[0] is not ".":
-                final.append(os.path.join(dir, e))
-        return final
+        # entries = os.listdir(dir)
+        # final = []
+        # for e in entries:
+        #     if e[0] is not ".":
+        #         final.append(os.path.join(dir, e))
+        return [e for e in os.listdir(dir) if e[0] != "."]
 
     def version(self):
         print("Local version:\n0.1.2 unofficial")
         print("Norminette help:")
-        self.send_content(json.dumps({"action":"help"}))
+        self.send_content(json.dumps({"action": "help"}))
 
-    def file_description(self, file, rules=[]):
+    def file_description(self, file, rules):
         with open(file, "r") as f:
             return json.dumps({"filename": file, "content": f.read(), "rules": rules})
 
@@ -151,8 +159,11 @@ class Norminette:
         self.files.append(f)
 
     def send_files(self, options):
+        disabled_rules = []
+        if options.rules is not None:
+            disabled_rules = options.rules.split(",")
         for f in self.files:
-            self.send_file(f, options.rules.split(","))
+            self.send_file(f, disabled_rules)
             self.sender.sync_if_needed
 
     def send_file(self, f, rules):
@@ -164,7 +175,7 @@ class Norminette:
     def cleanify_path(self, filename):
         return filename.replace(os.getcwd() + "/", "", 1)
 
-    def manage_result(self, result):
+    def manage_result(self, result, options):
         self.lock.acquire()
         if "filename" in result:
             print(
@@ -206,8 +217,8 @@ if __name__ == "__main__":
         n.check(Parser().parse())
         n.teardown()
     except socket.gaierror:
-        print("This script must be run while connected to the 42 Network")
+        print("This script must be run while connected to a 42 LAN")
         exit(1)
     except Exception as ex:
         print(f"Unexpected exception: {ex}")
-        exit(2)
+        raise
