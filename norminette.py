@@ -33,7 +33,7 @@ except ModuleNotFoundError as ex:
     exit(1)
 except Exception as ex:
     print(f"Unexpected Error: {ex}")
-    exit(1)
+    raise
 
 
 class Sender:
@@ -131,12 +131,12 @@ class Norminette:
                 self.populate_file(o)
 
     def list_dir(self, dir):
-        # entries = os.listdir(dir)
-        # final = []
-        # for e in entries:
-        #     if e[0] is not ".":
-        #         final.append(os.path.join(dir, e))
-        return [e for e in os.listdir(dir) if e[0] != "."]
+        entries = os.listdir(dir)
+        final = []
+        for e in entries:
+            if e[0] is not ".":
+                final.append(os.path.join(dir, e))
+        return final
 
     def version(self):
         print("Local version:\n0.1.2 unofficial")
