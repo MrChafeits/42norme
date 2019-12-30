@@ -8,6 +8,10 @@ import threading
 import uuid
 import socket
 
+import sys
+
+import time
+
 try:
     import pika
 
@@ -81,8 +85,8 @@ class Sender:
         self.counter -= 1
         self.cb(body.decode("utf-8"))
 
-    def sync_if_needed(self, max=os.cpu_count()):
-        if self.counter >= max:
+    def sync_if_needed(self, jobs=os.cpu_count()):
+        if self.counter >= jobs:
             self.connection.process_data_events()
 
     def sync(self):
@@ -95,6 +99,7 @@ class Norminette:
     sender = None
     lock = None
     options = None
+    stop = False
 
     def setup(self, options):
         self.options = options
@@ -104,22 +109,55 @@ class Norminette:
         self.sender.setup(lambda payload: self.manage_result(json.loads(payload)))
 
     def teardown(self):
-        print("\r\x1b", end="")
+        # print("\r\x1b", end="")
         self.sender.teardown()
 
     def check(self):
         if self.options.version:
             self.version()
         else:
-            # print(self.options)
-            if len(self.options.files_or_directories) is not 0:
-                self.populate_recursive(self.options.files_or_directories)
+            if len(self.options.files_or_directories) > 0:
+                self.scan_files(self.options.files_or_directories)
             else:
-                self.populate_recursive([os.getcwd()])
+                self.scan_files([os.getcwd()])
             self.send_files(self.options)
 
         self.sender.sync()
         print()
+
+    def scan_path(self, lst, path):
+        for root, dirs, files in os.walk(path, followlinks=True):
+            for ff in files:
+                if ff[0] != "." and (ff.endswith(".c") or ff.endswith(".h")):
+                    lst.append(os.path.join(root, ff))
+            for ii, dd in enumerate(dirs):
+                if dd[0] == "." and dd is not path:
+                    del dirs[ii]
+
+    def scan_files(self, lst, paths):
+        for path in paths:
+            if not os.path.isfile(path):
+                self.scan_path(lst, path)
+            else:
+                lst.append(os.path.abspath(path))
+
+    def test_scan(self, path=None):
+        if path is None or len(path) == 0:
+            path = [os.getcwd()]
+        l1 = []
+        print(path)
+        start = time.time()
+        self.scan_files(l1, path)
+        elapsed = time.time() - start
+        print(f"        scan_files: {elapsed}")
+        start = time.time()
+        self.populate_recursive(path)
+        elapsed = time.time() - start
+        print(f"populate_recursive: {elapsed}")
+        l1 = sorted(l1)
+        self.files = sorted(self.files)
+        print("len(l1):", len(l1), "len(self.files):", len(self.files))
+        print(l1 == self.files)
 
     def populate_recursive(self, objects):
         for o in objects:
@@ -138,10 +176,14 @@ class Norminette:
                 final.append(os.path.join(dir, e))
         return final
 
+    def get_rules(self):
+        print("\nRemote Norminette Rules:")
+        self.sender.publish(json.dumps({"action": "help"}))
+
     def version(self):
-        print("Local version:\n0.1.2 unofficial")
-        print("Norminette help:")
-        self.send_content(json.dumps({"action": "help"}))
+        print(f"{sys.argv[0]}: 0.1.2 unofficial")
+        print("Remote Norminette:", end=" ")
+        self.sender.publish(json.dumps({"action":"version"}))
 
     def file_description(self, file, rules):
         with open(file, "r") as f:
@@ -156,7 +198,7 @@ class Norminette:
 
     def populate_file(self, f):
         if not self.is_a_valid_file(f):
-            self.manage_result({"filename": f, "display": "Warning: Not a valid file"})
+            # self.manage_result({"filename": f, "display": "Warning: Not a valid file"})
             return
         self.files.append(f)
 
@@ -165,42 +207,40 @@ class Norminette:
         if options.rules is not None:
             disabled_rules = options.rules.split(",")
         for f in self.files:
-            self.send_file(f, disabled_rules)
+            self.sender.publish(self.file_description(f, disabled_rules))
             self.sender.sync_if_needed
-
-    def send_file(self, f, rules):
-        self.send_content(self.file_description(f, rules))
-
-    def send_content(self, content):
-        self.sender.publish(content)
 
     def cleanify_path(self, filename):
         return filename.replace(os.getcwd() + "/", "", 1)
 
     def manage_result(self, result):
         self.lock.acquire()
+        # print(result)
         if "filename" in result:
             print(
-                "\r\x1b[K\x1b[;1mNorme: "
+                "\r\x1b[K\x1b[1m" + "Norme: "
                 + self.cleanify_path(result["filename"] + "\x1b[m"),
                 end="",
             )
         if "display" in result and result["display"] is not None:
-            res = result["display"]
-            if "Unvalid" not in res:
+            disp = result["display"]
+            if "Unvalid" not in disp and "stop" not in result:
                 print()
             # Pretty print rules perhaps?
-            print(res)
+            print(disp)
         self.lock.release()
         if "stop" in result and result["stop"] is True:
+            self.stop = True
             # print()
-            exit(0)
+            # exit(0)
+            # return
 
 
 class Parser:
     def parse(self):
         parser = argparse.ArgumentParser(
-            usage="Usage: %(prog)s [options] [files_or_directories]", allow_abbrev=False
+            # usage="Usage: %(prog)s [options] [files_or_directories]",
+            allow_abbrev=False
         )
         parser.add_argument(
             "--version", "-v", help="Print version", action="store_true"
@@ -217,6 +257,7 @@ if __name__ == "__main__":
         addr = socket.gethostbyname("vogsphere")
         n = Norminette()
         n.setup(Parser().parse())
+        # n.test_scan(n.options.files_or_directories)
         n.check()
         n.teardown()
     except socket.gaierror:
