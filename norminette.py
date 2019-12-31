@@ -109,7 +109,6 @@ class Norminette:
         self.sender.setup(lambda payload: self.manage_result(json.loads(payload)))
 
     def teardown(self):
-        # print("\r\x1b", end="")
         self.sender.teardown()
 
     def check(self):
@@ -117,7 +116,7 @@ class Norminette:
             self.version()
         else:
             if len(self.options.files_or_directories) > 0:
-                self.scan_files(self.options.files_or_directories)
+                self.scan_files(self.files, self.options.files_or_directories)
             else:
                 self.scan_files([os.getcwd()])
             self.send_files(self.options)
@@ -141,7 +140,7 @@ class Norminette:
             else:
                 lst.append(os.path.abspath(path))
 
-    def test_scan(self, path=None):
+    def _test_scan(self, path=None):
         if path is None or len(path) == 0:
             path = [os.getcwd()]
         l1 = []
@@ -177,12 +176,12 @@ class Norminette:
         return final
 
     def get_rules(self):
-        print("\nRemote Norminette Rules:")
+        print("\nServer Rules:")
         self.sender.publish(json.dumps({"action": "help"}))
 
     def version(self):
-        print(f"{sys.argv[0]}: 0.1.2 unofficial")
-        print("Remote Norminette:", end=" ")
+        print("Client: 0.1.2 unofficial")
+        print("Server:", end=" ")
         self.sender.publish(json.dumps({"action":"version"}))
 
     def file_description(self, file, rules):
@@ -254,10 +253,11 @@ class Parser:
 
 if __name__ == "__main__":
     try:
+        # TODO: find better way to check that we're connected to 42 LAN
         addr = socket.gethostbyname("vogsphere")
         n = Norminette()
         n.setup(Parser().parse())
-        # n.test_scan(n.options.files_or_directories)
+        # n._test_scan(n.options.files_or_directories)
         n.check()
         n.teardown()
     except socket.gaierror:
