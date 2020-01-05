@@ -5,101 +5,36 @@ import os
 import re
 import json
 import threading
-import uuid
-import socket
 
 import sys
 
 import time
 
-try:
-    import pika
-
-    if (
-        pika.__version__ != "0.12.0"
-        and pika.__version__ != "0.13.0"
-        and pika.__version__ != "0.13.1"
-    ):
-        print(f"Found: pika=={pika.__version__}")
-        print("If this version functions as expected, please send a pull request or\n"
-            "create an issue to add it to the list of known compatible versions.")
-except ModuleNotFoundError as ex:
-    print(f"{ex}")
-    print(
-            "This python script requires pika and is known to be compatible with the\n"
-            "following versions:\n"
-            "\tpika==0.12.0\n"
-            "\tpika==0.13.0\n"
-            "\tpika==0.13.1\n"
-    )
-    print("\nInstall it by running:")
-    print("\tpython3 -m pip install --user pika==0.12.0")
-    exit(1)
-except Exception as ex:
-    print(f"Unexpected Error: {ex}")
-    raise
+from .sender import (
+    Sender,
+)
+from .rules import (
+    ruleList as norminette_rules,
+)
 
 
-class Sender:
-    connection = None
-    channel = None
-    exchange = None
-    reply_queue = None
-    routing_key = "norminette"
-    cb = None
-    counter = 0
-    corr_id = str(uuid.uuid4())
+class Norminette(object):
+    """Norminette class.
 
-    def setup(self, cb):
-        self.cb = cb
-        self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(
-                "norminette.42.fr", 5672, "/", pika.PlainCredentials("guest", "guest")
-            )
-        )
-        self.channel = self.connection.channel()
-        self.exchange = self.channel.exchange_declare(exchange=self.routing_key)
-        self.reply_queue = self.channel.queue_declare(exclusive=True).method.queue
-        self.channel.queue_bind(exchange=self.routing_key, queue=self.reply_queue)
-        self.channel.basic_consume(self.consume, queue=self.reply_queue, no_ack=True)
-        self.counter = 0
+    Norminette objects are the ones responsible for getting a list of
+    files to check, running said checks and displaying the results.
+    """
 
-    def teardown(self):
-        if self.channel is not None:
-            self.channel.close()
-        if self.connection is not None:
-            self.connection.close()
-
-    def publish(self, content):
-        self.counter += 1
-        self.channel.basic_publish(
-            exchange="",
-            routing_key=self.routing_key,
-            body=content,
-            properties=pika.BasicProperties(
-                reply_to=self.reply_queue, correlation_id=self.corr_id
-            ),
-        )
-
-    def consume(self, channel, method_frame, properties, body):
-        self.counter -= 1
-        self.cb(body.decode("utf-8"))
-
-    def sync_if_needed(self, jobs=os.cpu_count()):
-        if self.counter >= jobs:
-            self.connection.process_data_events()
-
-    def sync(self):
-        while self.counter != 0:
-            self.sync_if_needed(0)
-
-
-class Norminette:
     files = None
     sender = None
     lock = None
     options = None
     stop = False
+
+    def __init__(self, params=None):
+        """Create a Norminette object with the given options."""
+        if params is None:
+            params = {}
 
     def setup(self, options):
         self.options = options
@@ -234,35 +169,44 @@ class Norminette:
             # exit(0)
             # return
 
+def parse(overrideArguments=None):
+    def _comma_sep_rules(string):
+        value = string.split(',')
+        for _,rule in enumerate(value):
+            if rule not in norminette_rules:
+                raise argparse.ArgumentTypeError(f"invalid rule: {rule!r}")
+        return value
 
-class Parser:
-    def parse(self):
-        parser = argparse.ArgumentParser(
-            # usage="Usage: %(prog)s [options] [files_or_directories]",
-            allow_abbrev=False
-        )
-        parser.add_argument(
-            "--version", "-v", help="Print version", action="store_true"
-        )
-        parser.add_argument("--rules", "-R", help="Rules to disable", type=str)
-        parser.add_argument("files_or_directories", nargs=argparse.REMAINDER)
+    # usage="Usage: %(prog)s [options] [files_or_directories]",
+    kw = {
+        'usage': '%prog [OPTIONS] [FILE...]',
+        'conflict_handler': 'resolve',
+        'allow_abbrev': False
+    }
 
-        args = parser.parse_args()
-        return args
+    general = argparse.ArgumentParser(**kw)
+
+    general.add_argument(
+        "-h", "--help",
+        action='help',
+        help='Print this help text and exit')
+    general.add_argument(
+        "-v","--version",
+        action="store_true",
+        help="Print program version and exit")
+    general.add_argument(
+        "-R","--rules",
+        type=str,
+        help="Rules to disable")
+    general.add_argument("files_or_directories", nargs=argparse.REMAINDER)
+
+    args = general.parse_args()
+    return args
 
 
 if __name__ == "__main__":
-    try:
-        # TODO: find better way to check that we're connected to 42 LAN
-        addr = socket.gethostbyname("vogsphere")
-        n = Norminette()
-        n.setup(Parser().parse())
-        # n._test_scan(n.options.files_or_directories)
-        n.check()
-        n.teardown()
-    except socket.gaierror:
-        print("This script must be run while connected to a 42 LAN")
-        exit(1)
-    except Exception as ex:
-        print(f"Unexpected exception: {ex}")
-        raise
+    n = Norminette()
+    n.setup(Parser().parse())
+    # n._test_scan(n.options.files_or_directories)
+    n.check()
+    n.teardown()
