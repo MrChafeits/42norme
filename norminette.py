@@ -50,7 +50,7 @@ class Sender:
         self.cb = cb
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(
-                "norminette.42.fr", 5672, "/", pika.PlainCredentials("guest", "guest")
+                "norminette.jgengo.fr", 5672, "/", pika.PlainCredentials("guest", "guest")
             )
         )
         self.channel = self.connection.channel()
@@ -214,13 +214,12 @@ class Parser:
 
 if __name__ == "__main__":
     try:
-        addr = socket.gethostbyname("vogsphere")
         n = Norminette()
         n.setup(Parser().parse())
         n.check()
         n.teardown()
     except socket.gaierror:
-        print("This script must be run while connected to a 42 LAN")
+        print("This script must be run with a valid host")
         exit(1)
     except Exception as ex:
         print(f"Unexpected exception: {ex}")
