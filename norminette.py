@@ -7,6 +7,7 @@ import json
 import threading
 import uuid
 import socket
+import pprint
 
 try:
     import pika
@@ -37,20 +38,23 @@ except Exception as ex:
 
 
 class Sender:
-    connection = None
-    channel = None
-    exchange = None
-    reply_queue = None
-    routing_key = "norminette"
-    cb = None
-    counter = 0
-    corr_id = str(uuid.uuid4())
+
+    def __init__(self, opts):
+        self.connection = None
+        self.channel = None
+        self.exchange = None
+        self.reply_queue = None
+        self.host = opts.host
+        self.routing_key = "norminette"
+        self.cb = None
+        self.counter = 0
+        self.corr_id = str(uuid.uuid4())
 
     def setup(self, cb):
         self.cb = cb
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(
-                "norminette.jgengo.fr", 5672, "/", pika.PlainCredentials("guest", "guest")
+                self.host, 5672, "/", pika.PlainCredentials("guest", "guest")
             )
         )
         self.channel = self.connection.channel()
@@ -100,7 +104,7 @@ class Norminette:
         self.options = options
         self.files = []
         self.lock = threading.Lock()
-        self.sender = Sender()
+        self.sender = Sender(options)
         self.sender.setup(lambda payload: self.manage_result(json.loads(payload)))
 
     def teardown(self):
@@ -111,8 +115,7 @@ class Norminette:
         if self.options.version:
             self.version()
         else:
-            # print(self.options)
-            if len(self.options.files_or_directories) is not 0:
+            if len(self.options.files_or_directories) != 0:
                 self.populate_recursive(self.options.files_or_directories)
             else:
                 self.populate_recursive([os.getcwd()])
@@ -134,7 +137,7 @@ class Norminette:
         entries = os.listdir(dir)
         final = []
         for e in entries:
-            if e[0] is not ".":
+            if e[0] != ".":
                 final.append(os.path.join(dir, e))
         return final
 
@@ -180,17 +183,26 @@ class Norminette:
     def manage_result(self, result):
         self.lock.acquire()
         if "filename" in result:
-            print(
-                "\r\x1b[K\x1b[;1mNorme: "
-                + self.cleanify_path(result["filename"] + "\x1b[m"),
-                end="",
-            )
+            if not self.options.plain:
+                print("\r", end="")
+            if self.options.color:
+                print("\x1b[K\x1b[;1m", end="")
+            print("Norme:", self.cleanify_path(result["filename"]), end="")
+            if self.options.color:
+                print("\x1b[m", end="")
+            if self.options.plain:
+                print()
         if "display" in result and result["display"] is not None:
             res = result["display"]
             if "Unvalid" not in res:
                 print()
             # Pretty print rules perhaps?
-            print(res)
+            if self.options.plain:
+                print(res)
+            else:
+                ver, rules = res.splitlines()
+                print(ver)
+                pprint.pp(rules.split(" "))
         self.lock.release()
         if "stop" in result and result["stop"] is True:
             # print()
@@ -205,6 +217,9 @@ class Parser:
         parser.add_argument(
             "--version", "-v", help="Print version", action="store_true"
         )
+        parser.add_argument("--host", "-H", help="Remote norminette host", type=str, default="norminette.jgengo.fr")
+        parser.add_argument("--color", help="Enable colors in output", action="store_true")
+        parser.add_argument("--plain", "-p", help="Disable pretty printing output", action="store_true")
         parser.add_argument("--rules", "-R", help="Rules to disable", type=str)
         parser.add_argument("files_or_directories", nargs=argparse.REMAINDER)
 
@@ -212,7 +227,7 @@ class Parser:
         return args
 
 
-if __name__ == "__main__":
+def main():
     try:
         n = Norminette()
         n.setup(Parser().parse())
@@ -224,3 +239,7 @@ if __name__ == "__main__":
     except Exception as ex:
         print(f"Unexpected exception: {ex}")
         raise
+
+
+if __name__ == "__main__":
+    main()
